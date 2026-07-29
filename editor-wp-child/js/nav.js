@@ -1,4 +1,28 @@
 (function () {
+	document.querySelectorAll( '.rsp-article__video[data-video-id]' ).forEach( function ( wrap ) {
+		var playBtn = wrap.querySelector( '.rsp-article__video-play' );
+
+		if ( ! playBtn ) {
+			return;
+		}
+
+		playBtn.addEventListener( 'click', function () {
+			var videoId = wrap.getAttribute( 'data-video-id' );
+			var iframe = document.createElement( 'iframe' );
+
+			iframe.src = 'https://www.youtube.com/embed/' + encodeURIComponent( videoId ) + '?autoplay=1';
+			iframe.title = 'YouTube video player';
+			iframe.frameBorder = '0';
+			iframe.allow = 'accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture';
+			iframe.allowFullscreen = true;
+
+			wrap.innerHTML = '';
+			wrap.appendChild( iframe );
+		} );
+	} );
+})();
+
+(function () {
 	var hamburger = document.querySelector( '.rsp-hamburger' );
 	var overlay = document.querySelector( '.rsp-mobile-overlay' );
 	var mobileMenu = document.getElementById( 'rsp-mobile-menu' );
