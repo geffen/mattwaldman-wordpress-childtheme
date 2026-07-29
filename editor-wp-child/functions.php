@@ -21,4 +21,33 @@
 	add_action('wp_head', 'editor_child_font_preconnect', 1);
 
 
+	/**
+	 * Core wp_nav_menu() doesn't add a "menu-item-has-children" class to
+	 * parent items by itself — add it for the RSP menus so the desktop
+	 * dropdown caret and the mobile accordion toggle (js/nav.js) have
+	 * something to hook into.
+	 */
+	function editor_child_menu_has_children_class( $items, $args )
+	{
+		if ( empty( $args->menu_class ) || ! in_array( $args->menu_class, array( 'rsp-menu', 'rsp-mobile-menu__list' ), true ) )
+		{
+			return $items;
+		}
+
+		$parent_ids = array_filter( wp_list_pluck( $items, 'menu_item_parent' ) );
+
+		foreach ( $items as $item )
+		{
+			if ( in_array( (string) $item->ID, $parent_ids, true ) )
+			{
+				$item->classes[] = 'menu-item-has-children';
+			}
+		}
+
+		return $items;
+	}
+
+	add_filter('wp_nav_menu_objects', 'editor_child_menu_has_children_class', 10, 2);
+
+
 /* Custom Functions */
