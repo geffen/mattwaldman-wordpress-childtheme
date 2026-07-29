@@ -312,15 +312,15 @@ Text Domain: editor-child
 }
 
 .rsp-hamburger[aria-expanded="true"] span:nth-child(1) {
-	transform: translateY(8px) rotate(45deg);
+	transform: translateY(8px) rotate(45deg) !important;
 }
 
 .rsp-hamburger[aria-expanded="true"] span:nth-child(2) {
-	opacity: 0;
+	opacity: 0 !important;
 }
 
 .rsp-hamburger[aria-expanded="true"] span:nth-child(3) {
-	transform: translateY(-8px) rotate(-45deg);
+	transform: translateY(-8px) rotate(-45deg) !important;
 }
 
 /* Mobile slide-in menu */
