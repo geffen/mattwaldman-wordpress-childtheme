@@ -344,6 +344,11 @@ Text Domain: editor-child
 	box-shadow: -12px 0 32px oklch(0 0 0 / 0.3);
 }
 
+.rsp-mobile-menu[hidden],
+.rsp-mobile-overlay[hidden] {
+	display: none;
+}
+
 /* Lock the background from scrolling behind the open mobile menu */
 body.rsp-mobile-menu-open {
 	overflow: hidden;
