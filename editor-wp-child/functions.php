@@ -6,10 +6,29 @@
 
 		wp_enqueue_style('rsp-google-fonts', 'https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Cinzel:wght@600;700&display=swap', array(), null);
 
-		wp_enqueue_script('rsp-nav', get_stylesheet_directory_uri() . '/js/nav.js', array(), '1.0.0', true);
+		wp_enqueue_script('rsp-nav', get_stylesheet_directory_uri() . '/js/nav.js', array(), filemtime( get_stylesheet_directory() . '/js/nav.js' ), true);
 	}
 
 	add_action('wp_enqueue_scripts', 'editor_child_scripts');
+
+
+	/**
+	 * The parent theme enqueues the child's style.css itself (handle
+	 * "theme-style", functions.php ~line 60) with $ver = null, so it never
+	 * gets a cache-busting query string — any CDN/browser cache keyed on
+	 * that bare URL can serve a stale copy after every future CSS change.
+	 * Re-register the same handle after the parent's enqueue runs, with a
+	 * version tied to the file's actual mtime so it self-busts on every
+	 * upload.
+	 */
+	function editor_child_fix_style_cache_busting()
+	{
+		wp_dequeue_style( 'theme-style' );
+		wp_deregister_style( 'theme-style' );
+		wp_enqueue_style( 'theme-style', get_stylesheet_uri(), array(), filemtime( get_stylesheet_directory() . '/style.css' ) );
+	}
+
+	add_action('wp_enqueue_scripts', 'editor_child_fix_style_cache_busting', 20);
 
 
 	function editor_child_font_preconnect()
