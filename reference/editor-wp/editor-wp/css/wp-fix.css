@@ -1,0 +1,78 @@
+/* ============================================================================= */
+
+
+.navigation > div + div
+{
+	float: right;
+}
+
+
+.author-bio
+{
+	overflow: auto;
+}
+
+
+.related-posts-excerpt
+{
+	font-size: 14px;
+}
+
+
+body.logged-in .comment-form p.form-submit,
+blockquote p,
+.intro p
+{
+	margin: 0px;
+}
+
+
+.chat-text > p + p,
+.service i + br,
+.fun-fact i + br,
+.event .date + br,
+.testo img + br
+{
+	display: none;
+}
+
+
+/* ============================================================================= */
+
+
+@media screen and (max-width: 600px) {
+  html #wpadminbar {
+		top: -46px;
+	}
+}
+
+
+@media screen and (min-width: 992px) {
+	.is-menu-fixed.menu-detached .admin-bar .site-navigation { top: 32px; }
+}
+
+
+.widget_categories ul li.cat-item a {
+    display: inline-block;
+}
+
+
+.widget_categories ul ul {
+    padding-left: 12px;
+}
+
+
+.search-results .book {
+    width: auto;
+}
+
+
+.search-results .book div {
+    backface-visibility: visible;
+    height: auto;
+    -webkit-backface-visibility: visible;
+    position: static;
+}
+
+
+/* ============================================================================= */
