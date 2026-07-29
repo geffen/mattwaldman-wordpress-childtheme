@@ -11,12 +11,14 @@
 		mobileMenu.hidden = false;
 		overlay.hidden = false;
 		hamburger.setAttribute( 'aria-expanded', 'true' );
+		document.body.classList.add( 'rsp-mobile-menu-open' );
 	}
 
 	function closeMobileMenu() {
 		mobileMenu.hidden = true;
 		overlay.hidden = true;
 		hamburger.setAttribute( 'aria-expanded', 'false' );
+		document.body.classList.remove( 'rsp-mobile-menu-open' );
 	}
 
 	hamburger.addEventListener( 'click', function () {
@@ -25,6 +27,15 @@
 	} );
 
 	overlay.addEventListener( 'click', closeMobileMenu );
+
+	// If the window is resized past the mobile breakpoint while the menu
+	// is open, force it closed (the CSS hides it outright at that width,
+	// and the hamburger that would otherwise close it is gone too).
+	window.matchMedia( '(min-width: 900px)' ).addEventListener( 'change', function ( e ) {
+		if ( e.matches ) {
+			closeMobileMenu();
+		}
+	} );
 
 	mobileMenu.querySelectorAll( '.menu-item-has-children > a' ).forEach( function ( link ) {
 		link.addEventListener( 'click', function ( e ) {
