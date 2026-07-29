@@ -14,3 +14,419 @@ Text Domain: editor-child
 /* =Theme customization starts here
 -------------------------------------------------------------- */
 
+/* =Header 1C — quickbar, main bar, dropdown nav, mobile menu
+-------------------------------------------------------------- */
+:root {
+	--rsp-page-backdrop: oklch(0.7 0.005 260);
+	--rsp-navy: oklch(0.19 0.02 260);
+	--rsp-navy-darker: oklch(0.11 0.008 260);
+	--rsp-quickbar-bg: oklch(0.15 0.018 260 / 0.85);
+	--rsp-dropdown-bg: oklch(0.24 0.02 260);
+	--rsp-dropdown-hover-bg: oklch(0.3 0.02 260);
+	--rsp-mobile-menu-bg: oklch(0.16 0.018 260);
+	--rsp-mobile-border: oklch(0.3 0.015 260);
+
+	--rsp-gold: oklch(0.78 0.14 80);
+	--rsp-gold-hover: oklch(0.86 0.13 80);
+	--rsp-gold-active: oklch(0.82 0.13 80);
+	--rsp-cta-gold: oklch(0.83 0.15 92);
+	--rsp-cta-gold-hover: oklch(0.88 0.14 92);
+	--rsp-sheen: oklch(1 0.06 95 / 0.85);
+
+	--rsp-text-strong: oklch(0.9 0.01 90);
+	--rsp-text-menu-item: oklch(0.92 0.01 90);
+	--rsp-text-quickbar: oklch(0.82 0.015 260);
+	--rsp-text-mobile-strong: oklch(0.94 0.01 90);
+	--rsp-text-mobile-sub: oklch(0.8 0.01 90);
+	--rsp-text-on-gold: oklch(0.18 0.02 260);
+}
+
+.rsp-header {
+	position: sticky;
+	top: 0;
+	z-index: 20;
+	background: var(--rsp-navy);
+	font-family: 'Manrope', sans-serif;
+}
+
+.rsp-header__texture {
+	position: absolute;
+	inset: 0;
+	z-index: 0;
+	background-image: url('images/headerBkgd.jpg');
+	background-size: cover;
+	background-position: center;
+	pointer-events: none;
+}
+
+/* Quickbar */
+.rsp-quickbar {
+	position: relative;
+	z-index: 1;
+	background: var(--rsp-quickbar-bg);
+}
+
+.rsp-quickbar__inner {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	max-width: 1280px;
+	margin: 0 auto;
+	padding: 0 clamp(20px, 4vw, 48px);
+	height: 32px;
+}
+
+.rsp-quickbar a {
+	font-size: 11px;
+	letter-spacing: 0.04em;
+	color: var(--rsp-text-quickbar);
+	text-decoration: none;
+}
+
+.rsp-quickbar a:hover {
+	color: var(--rsp-gold);
+}
+
+.rsp-quickbar__login.is-active {
+	font-weight: 700;
+	color: var(--rsp-gold-active);
+}
+
+.rsp-quickbar__right {
+	display: flex;
+	align-items: center;
+	gap: 16px;
+}
+
+.rsp-quickbar__social {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+}
+
+.rsp-quickbar__social a {
+	display: flex;
+	color: var(--rsp-text-quickbar);
+}
+
+.rsp-quickbar__social a:hover {
+	color: var(--rsp-gold);
+}
+
+/* Main bar */
+.rsp-mainbar {
+	position: relative;
+	z-index: 1;
+	display: flex;
+	align-items: center;
+	max-width: 1280px;
+	margin: 0 auto;
+	padding: 0 clamp(20px, 4vw, 48px);
+	height: 76px;
+	gap: 24px;
+}
+
+.rsp-logo {
+	display: flex;
+	align-items: stretch;
+	flex-shrink: 0;
+	padding-right: 36px;
+}
+
+.rsp-logo img {
+	width: 261px;
+	height: 76px;
+	flex-shrink: 0;
+	object-fit: contain;
+}
+
+/* Primary nav (desktop) */
+.rsp-nav {
+	display: flex;
+	flex: 1;
+	min-width: 0;
+}
+
+.rsp-menu {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	flex: 1;
+	gap: 28px;
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+
+.rsp-menu li {
+	position: relative;
+}
+
+.rsp-menu > li > a {
+	font-size: 14px;
+	font-weight: 600;
+	color: var(--rsp-text-strong);
+	white-space: nowrap;
+	text-decoration: none;
+}
+
+.rsp-menu > li > a:hover {
+	color: var(--rsp-gold);
+}
+
+.rsp-menu li.menu-item-has-children > a::after {
+	content: ' \25BE';
+	font-size: 10px;
+}
+
+.rsp-menu li.current-menu-item > a,
+.rsp-menu li.current-menu-ancestor > a {
+	font-weight: 700;
+	color: var(--rsp-gold-active);
+	border-bottom: 2px solid var(--rsp-gold-active);
+}
+
+.rsp-menu .sub-menu {
+	position: absolute;
+	top: 100%;
+	left: 0;
+	padding-top: 8px;
+	min-width: 200px;
+	margin: 0;
+	list-style: none;
+	opacity: 0;
+	visibility: hidden;
+	transform: translateY(4px);
+	transition: opacity 0.15s ease, transform 0.15s ease, visibility 0.15s;
+}
+
+.rsp-menu li:hover > .sub-menu,
+.rsp-menu li:focus-within > .sub-menu {
+	opacity: 1;
+	visibility: visible;
+	transform: translateY(0);
+}
+
+.rsp-menu .sub-menu {
+	background: var(--rsp-dropdown-bg);
+	border-radius: 8px;
+	padding: 8px;
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+	box-shadow: 0 8px 24px oklch(0 0 0 / 0.3);
+}
+
+.rsp-menu .sub-menu a {
+	font-size: 14px;
+	font-weight: 500;
+	color: var(--rsp-text-menu-item);
+	padding: 9px 12px;
+	border-radius: 5px;
+	display: block;
+	text-decoration: none;
+	white-space: nowrap;
+}
+
+.rsp-menu .sub-menu a:hover {
+	background: var(--rsp-dropdown-hover-bg);
+	color: var(--rsp-gold);
+}
+
+/* Buy the RSP CTA (gold sheen on hover) */
+.rsp-cta {
+	position: relative;
+	overflow: hidden;
+	flex-shrink: 0;
+	background: var(--rsp-cta-gold);
+	color: var(--rsp-text-on-gold);
+	font-size: 13px;
+	font-weight: 700;
+	padding: 10px 20px;
+	border-radius: 999px;
+	white-space: nowrap;
+	text-decoration: none;
+}
+
+.rsp-cta:hover {
+	background: var(--rsp-cta-gold-hover);
+	color: var(--rsp-text-on-gold);
+}
+
+.rsp-cta::before {
+	content: '';
+	position: absolute;
+	top: 0;
+	left: 0;
+	width: 45%;
+	height: 100%;
+	background: linear-gradient(100deg, transparent, var(--rsp-sheen), transparent);
+	transform: translateX(-140%) skewX(-20deg);
+	pointer-events: none;
+}
+
+.rsp-cta:hover::before {
+	animation: rsp-sheen 0.85s ease;
+}
+
+@keyframes rsp-sheen {
+	0% { transform: translateX(-140%) skewX(-20deg); }
+	100% { transform: translateX(360%) skewX(-20deg); }
+}
+
+.rsp-cta--mobile {
+	margin-top: 16px;
+	text-align: center;
+	display: block;
+}
+
+/* Hamburger (mobile) */
+.rsp-hamburger {
+	display: none;
+	flex-direction: column;
+	justify-content: center;
+	gap: 5px;
+	width: 26px;
+	height: 26px;
+	padding: 10px;
+	margin: -10px 0 -10px auto;
+	background: none;
+	border: 0;
+	border-radius: 8px;
+	cursor: pointer;
+	flex-shrink: 0;
+}
+
+.rsp-hamburger:hover {
+	background: oklch(1 0 0 / 0.08);
+}
+
+.rsp-hamburger span {
+	height: 3px;
+	border-radius: 2px;
+	background: var(--rsp-text-mobile-strong);
+	transition: transform 0.2s, opacity 0.2s;
+}
+
+.rsp-hamburger[aria-expanded="true"] span:nth-child(1) {
+	transform: translateY(8px) rotate(45deg);
+}
+
+.rsp-hamburger[aria-expanded="true"] span:nth-child(2) {
+	opacity: 0;
+}
+
+.rsp-hamburger[aria-expanded="true"] span:nth-child(3) {
+	transform: translateY(-8px) rotate(-45deg);
+}
+
+/* Mobile slide-in menu */
+.rsp-mobile-overlay {
+	position: fixed;
+	inset: 0;
+	background: oklch(0.1 0.01 260 / 0.5);
+	z-index: 29;
+}
+
+.rsp-mobile-menu {
+	position: fixed;
+	top: 0;
+	right: 0;
+	bottom: 0;
+	width: min(82vw, 360px);
+	background: var(--rsp-mobile-menu-bg);
+	z-index: 30;
+	display: flex;
+	flex-direction: column;
+	padding: 24px;
+	gap: 4px;
+	overflow-y: auto;
+	box-shadow: -12px 0 32px oklch(0 0 0 / 0.3);
+}
+
+.rsp-mobile-menu__list {
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+
+.rsp-mobile-menu__list > li {
+	border-bottom: 1px solid var(--rsp-mobile-border);
+}
+
+.rsp-mobile-menu__list > li > a {
+	display: block;
+	color: var(--rsp-text-mobile-strong);
+	font-size: 16px;
+	font-weight: 600;
+	padding: 14px 4px;
+	text-decoration: none;
+}
+
+.rsp-mobile-menu__list > li > a:hover {
+	color: var(--rsp-gold);
+}
+
+.rsp-mobile-menu__list li.menu-item-has-children > a::after {
+	content: '+';
+	float: right;
+	color: var(--rsp-gold);
+	font-weight: 700;
+}
+
+.rsp-mobile-menu__list li.menu-item-has-children.is-open > a::after {
+	content: '\2212';
+}
+
+.rsp-mobile-menu__list .sub-menu {
+	margin: 0;
+	padding: 0 0 12px 14px;
+	list-style: none;
+	display: none;
+	flex-direction: column;
+	gap: 2px;
+}
+
+.rsp-mobile-menu__list li.is-open > .sub-menu {
+	display: flex;
+}
+
+.rsp-mobile-menu__list .sub-menu a {
+	display: block;
+	color: var(--rsp-text-mobile-sub);
+	font-size: 14px;
+	padding: 8px 4px;
+	border-radius: 5px;
+	text-decoration: none;
+}
+
+.rsp-mobile-menu__list .sub-menu a:hover {
+	color: var(--rsp-gold);
+	background: oklch(1 0 0 / 0.05);
+}
+
+/* Responsive breakpoints (CTA hides <1100px, header collapses <900px) */
+@media (max-width: 1099px) {
+	.rsp-cta:not(.rsp-cta--mobile) {
+		display: none;
+	}
+}
+
+@media (max-width: 899px) {
+	.rsp-quickbar,
+	.rsp-nav {
+		display: none;
+	}
+
+	.rsp-hamburger {
+		display: flex;
+	}
+}
+
+@media (min-width: 900px) {
+	.rsp-mobile-menu,
+	.rsp-mobile-overlay {
+		display: none !important;
+	}
+}
+
