@@ -55,16 +55,43 @@
 	// If the window is resized past the mobile breakpoint while the menu
 	// is open, force it closed (the CSS hides it outright at that width,
 	// and the hamburger that would otherwise close it is gone too).
-	window.matchMedia( '(min-width: 900px)' ).addEventListener( 'change', function ( e ) {
+	// Must match the 768px breakpoint in style.css.
+	window.matchMedia( '(min-width: 768px)' ).addEventListener( 'change', function ( e ) {
 		if ( e.matches ) {
 			closeMobileMenu();
 		}
 	} );
 
-	mobileMenu.querySelectorAll( '.menu-item-has-children > a' ).forEach( function ( link ) {
+	// Parent items act as accordion toggles on mobile, so a tap can't also
+	// follow their link. Some parents now point at real pages (Player
+	// Evaluation, Resources) rather than '#', and those pages would other-
+	// wise be unreachable on mobile — so give each one an explicit
+	// "Overview" link as the first entry in its own submenu.
+	mobileMenu.querySelectorAll( '.menu-item-has-children' ).forEach( function ( item ) {
+		var link = item.querySelector( ':scope > a' );
+		var submenu = item.querySelector( ':scope > .sub-menu' );
+
+		if ( ! link || ! submenu ) {
+			return;
+		}
+
+		var href = link.getAttribute( 'href' );
+
+		if ( href && href !== '#' ) {
+			var li = document.createElement( 'li' );
+			var overview = document.createElement( 'a' );
+
+			overview.href = href;
+			overview.textContent = 'Overview';
+			overview.className = 'rsp-mobile-menu__overview';
+
+			li.appendChild( overview );
+			submenu.insertBefore( li, submenu.firstChild );
+		}
+
 		link.addEventListener( 'click', function ( e ) {
 			e.preventDefault();
-			link.parentElement.classList.toggle( 'is-open' );
+			item.classList.toggle( 'is-open' );
 		} );
 	} );
 })();

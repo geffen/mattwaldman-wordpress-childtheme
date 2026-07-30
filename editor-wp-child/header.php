@@ -9,11 +9,14 @@
  * edit them in Appearance > Menus. Give "Player Evaluation" / "Resources"
  * child items in the menu builder to get their dropdowns.
  *
- * TODO: swap the '#' placeholders (tagline, Member Login, Buy the RSP CTA)
- * for real page URLs once those pages exist.
+ * TODO: swap the '#' placeholder (Member Login) for a real page URL once
+ * that page exists. The tagline and Buy the RSP CTA below already
+ * resolve via editor_child_get_about_url() / editor_child_get_buy_rsp_url().
  */
 
 $is_member_login = is_page( 'member-login' );
+$buy_rsp_url      = editor_child_get_buy_rsp_url();
+$about_url        = editor_child_get_about_url();
 ?>
 <!doctype html>
 
@@ -33,7 +36,7 @@ $is_member_login = is_page( 'member-login' );
 
 			<div class="rsp-quickbar">
 				<div class="rsp-quickbar__inner">
-					<a href="#" class="rsp-quickbar__tagline">Pleasantly Shocking Readers since 2006</a>
+					<a href="<?php echo esc_url( $about_url ); ?>" class="rsp-quickbar__tagline">Pleasantly Shocking Readers since 2006</a>
 
 					<div class="rsp-quickbar__right">
 						<a href="#" class="rsp-quickbar__login<?php echo $is_member_login ? ' is-active' : ''; ?>">Member Login</a>
@@ -59,13 +62,13 @@ $is_member_login = is_page( 'member-login' );
 							'menu_id'        => 'rsp-menu',
 							'menu_class'     => 'rsp-menu',
 							'container'      => false,
-							'depth'          => 2,
+							'depth'          => 3,
 							'fallback_cb'    => false,
 						) );
 					?>
 				</nav>
 
-				<a href="#" class="rsp-cta" data-sheen>Buy the RSP</a>
+				<a href="<?php echo esc_url( $buy_rsp_url ); ?>" class="rsp-cta" data-sheen>Buy the RSP</a>
 
 				<button type="button" class="rsp-hamburger" aria-expanded="false" aria-controls="rsp-mobile-menu" aria-label="<?php esc_attr_e( 'Toggle menu', 'editor-child' ); ?>">
 					<span></span><span></span><span></span>
@@ -81,9 +84,9 @@ $is_member_login = is_page( 'member-login' );
 					'menu_id'        => 'rsp-mobile-menu-list',
 					'menu_class'     => 'rsp-mobile-menu__list',
 					'container'      => false,
-					'depth'          => 2,
+					'depth'          => 3,
 					'fallback_cb'    => false,
 				) );
 			?>
-			<a href="#" class="rsp-cta rsp-cta--mobile" data-sheen>Buy the RSP</a>
+			<a href="<?php echo esc_url( $buy_rsp_url ); ?>" class="rsp-cta rsp-cta--mobile" data-sheen>Buy the RSP</a>
 		</div>

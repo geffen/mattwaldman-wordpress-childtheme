@@ -31,6 +31,36 @@
 	add_action('wp_enqueue_scripts', 'editor_child_fix_style_cache_busting', 20);
 
 
+	/**
+	 * The host sends no cache headers at all on front-end HTML — no
+	 * Cache-Control, ETag, or Expires — so browsers fall back to
+	 * heuristic freshness and can serve a stale page for hours after a
+	 * deploy or a new post. Send explicit revalidation headers so the
+	 * browser always checks with the server.
+	 *
+	 * Enqueued assets are already handled separately by filemtime()
+	 * versioning; this covers the HTML documents themselves.
+	 *
+	 * Skips admin, feeds, and REST so their own caching rules stand.
+	 */
+	function editor_child_revalidate_html()
+	{
+		if ( is_admin() || is_feed() || ( defined( 'REST_REQUEST' ) && REST_REQUEST ) )
+		{
+			return;
+		}
+
+		if ( headers_sent() )
+		{
+			return;
+		}
+
+		header( 'Cache-Control: no-cache, must-revalidate, max-age=0' );
+	}
+
+	add_action('send_headers', 'editor_child_revalidate_html');
+
+
 	function editor_child_font_preconnect()
 	{
 		echo '<link rel="preconnect" href="https://fonts.googleapis.com">' . "\n";
@@ -158,6 +188,420 @@
 
 
 	/**
+	 * TEST-SITE-ONLY demo content: adds the "Articles" category to the 8
+	 * most recent posts so the Resources > Articles nav link has a real
+	 * grid to show (that category is newly created and empty, and Matt's
+	 * actual re-categorisation hasn't happened yet).
+	 *
+	 * Two guards, because this writes to post data:
+	 *  - hard-gated to the notmattwaldman.com test host, so it can never
+	 *    fire on production even if this theme is deployed there;
+	 *  - one-time, via the editor_child_demo_articles_seeded option.
+	 *
+	 * Appends the category (does not replace existing ones), so it's
+	 * trivially reversible. DELETE this function once real content is
+	 * categorised — it exists only to make the nav browsable during dev.
+	 */
+	function editor_child_seed_demo_articles_category()
+	{
+		if ( get_option( 'editor_child_demo_articles_seeded' ) )
+		{
+			return;
+		}
+
+		if ( false === strpos( home_url(), 'notmattwaldman.com' ) )
+		{
+			return;
+		}
+
+		$articles = get_category_by_slug( 'articles' );
+
+		if ( ! $articles )
+		{
+			return;
+		}
+
+		$post_ids = get_posts( array(
+			'posts_per_page'      => 8,
+			'ignore_sticky_posts' => true,
+			'fields'              => 'ids',
+		) );
+
+		foreach ( $post_ids as $post_id )
+		{
+			wp_set_post_categories( $post_id, array( (int) $articles->term_id ), true );
+		}
+
+		update_option( 'editor_child_demo_articles_seeded', 1 );
+	}
+
+	add_action('init', 'editor_child_seed_demo_articles_category', 10);
+
+
+	/**
+	 * One-time seed of rsp_draft_class terms. Deliberately not done in the
+	 * original term seeder (draft classes are an open-ended list), but the
+	 * "by Draft Class" nav submenu needs terms to point at, so seed the
+	 * recent classes. Add future years in wp-admin under Posts > Draft
+	 * Class — nothing here needs changing.
+	 */
+	function editor_child_seed_draft_class_terms()
+	{
+		if ( get_option( 'editor_child_draft_classes_seeded' ) )
+		{
+			return;
+		}
+
+		foreach ( array( '2024', '2025', '2026' ) as $year )
+		{
+			if ( ! term_exists( $year, 'rsp_draft_class' ) )
+			{
+				wp_insert_term( $year, 'rsp_draft_class' );
+			}
+		}
+
+		update_option( 'editor_child_draft_classes_seeded', 1 );
+	}
+
+	add_action('init', 'editor_child_seed_draft_class_terms', 8);
+
+
+	/**
+	 * One-time build of the third nav level: turns "by Position" and
+	 * "by Draft Class" into dropdown parents whose children are the
+	 * actual taxonomy terms (QB/RB/WR/TE and the draft-class years).
+	 * Each child points at its term archive, which archive.php renders.
+	 *
+	 * Separate from editor_child_seed_primary_menu() because that one has
+	 * already run on the live site — its option gate means it will never
+	 * fire again, so new structure needs its own one-time seeder.
+	 *
+	 * Draft classes are ordered newest-first; positions keep QB/RB/WR/TE
+	 * order rather than alphabetical.
+	 */
+	function editor_child_seed_nav_submenus()
+	{
+		if ( get_option( 'editor_child_nav_submenus_seeded' ) )
+		{
+			return;
+		}
+
+		$menu = wp_get_nav_menu_object( 'RSP Primary Navigation' );
+
+		if ( ! $menu )
+		{
+			return;
+		}
+
+		$items = wp_get_nav_menu_items( $menu->term_id );
+
+		if ( ! $items )
+		{
+			return;
+		}
+
+		$parent_ids   = array();
+		$existing     = array();
+
+		foreach ( $items as $item )
+		{
+			// Decode entities before matching — see the note in
+			// editor_child_sync_primary_menu_urls(); titles containing "&"
+			// come back as "&amp;" and never match a raw comparison.
+			$title = html_entity_decode( $item->title, ENT_QUOTES, 'UTF-8' );
+
+			if ( in_array( $title, array( 'by Position', 'by Draft Class' ), true ) )
+			{
+				$parent_ids[ $title ] = $item->ID;
+			}
+
+			$existing[ $item->menu_item_parent . '|' . $title ] = true;
+		}
+
+		$groups = array(
+			'by Position'    => array(
+				'taxonomy' => 'rsp_position',
+				'order'    => array( 'QB', 'RB', 'WR', 'TE' ),
+			),
+			'by Draft Class' => array(
+				'taxonomy' => 'rsp_draft_class',
+				'order'    => array(),
+			),
+		);
+
+		foreach ( $groups as $parent_title => $group )
+		{
+			if ( empty( $parent_ids[ $parent_title ] ) )
+			{
+				continue;
+			}
+
+			$parent_id = $parent_ids[ $parent_title ];
+
+			$terms = get_terms( array(
+				'taxonomy'   => $group['taxonomy'],
+				'hide_empty' => false,
+			) );
+
+			if ( is_wp_error( $terms ) || empty( $terms ) )
+			{
+				continue;
+			}
+
+			// Explicit order where the design implies one (positions),
+			// otherwise newest-first (draft class years).
+			if ( ! empty( $group['order'] ) )
+			{
+				$ordered = array();
+
+				foreach ( $group['order'] as $name )
+				{
+					foreach ( $terms as $term )
+					{
+						if ( $term->name === $name )
+						{
+							$ordered[] = $term;
+						}
+					}
+				}
+
+				$terms = $ordered ? $ordered : $terms;
+			}
+			else
+			{
+				usort( $terms, function ( $a, $b ) {
+					return strcmp( $b->name, $a->name );
+				} );
+			}
+
+			foreach ( $terms as $term )
+			{
+				if ( isset( $existing[ $parent_id . '|' . $term->name ] ) )
+				{
+					continue;
+				}
+
+				$term_link = get_term_link( $term );
+
+				if ( is_wp_error( $term_link ) )
+				{
+					continue;
+				}
+
+				wp_update_nav_menu_item( $menu->term_id, 0, array(
+					'menu-item-title'     => $term->name,
+					'menu-item-url'       => $term_link,
+					'menu-item-parent-id' => $parent_id,
+					'menu-item-status'    => 'publish',
+				) );
+			}
+		}
+
+		update_option( 'editor_child_nav_submenus_seeded', 1 );
+	}
+
+	add_action('init', 'editor_child_seed_nav_submenus', 15);
+
+
+	/**
+	 * One-time creation of the "Buy the RSP" page, assigned the
+	 * template-buy-the-rsp.php template, so the header CTA and the
+	 * "RSP Draft Guide" nav item have a real destination to sync to
+	 * (see editor_child_sync_primary_menu_urls()) without a manual
+	 * wp-admin step.
+	 */
+	function editor_child_seed_buy_rsp_page()
+	{
+		if ( get_option( 'editor_child_buy_rsp_page_seeded' ) )
+		{
+			return;
+		}
+
+		$existing = get_page_by_path( 'buy-the-rsp' );
+
+		if ( ! $existing )
+		{
+			$page_id = wp_insert_post( array(
+				'post_title'  => 'Buy the RSP',
+				'post_name'   => 'buy-the-rsp',
+				'post_status' => 'publish',
+				'post_type'   => 'page',
+			) );
+
+			if ( $page_id && ! is_wp_error( $page_id ) )
+			{
+				update_post_meta( $page_id, '_wp_page_template', 'template-buy-the-rsp.php' );
+			}
+		}
+
+		update_option( 'editor_child_buy_rsp_page_seeded', 1 );
+	}
+
+	add_action('init', 'editor_child_seed_buy_rsp_page', 9);
+
+
+	/**
+	 * One-time wiring of the "About" page to template-about.php. The test
+	 * site already has a real "About" page at /about/ (genuine bio copy,
+	 * not placeholder content) — assign the template to that existing
+	 * page rather than creating a duplicate. Only creates a new page if
+	 * /about/ doesn't exist at all.
+	 */
+	function editor_child_seed_about_page()
+	{
+		if ( get_option( 'editor_child_about_page_seeded' ) )
+		{
+			return;
+		}
+
+		$existing = get_page_by_path( 'about' );
+
+		if ( $existing )
+		{
+			update_post_meta( $existing->ID, '_wp_page_template', 'template-about.php' );
+		}
+		else
+		{
+			$page_id = wp_insert_post( array(
+				'post_title'  => 'About',
+				'post_name'   => 'about',
+				'post_status' => 'publish',
+				'post_type'   => 'page',
+			) );
+
+			if ( $page_id && ! is_wp_error( $page_id ) )
+			{
+				update_post_meta( $page_id, '_wp_page_template', 'template-about.php' );
+			}
+		}
+
+		update_option( 'editor_child_about_page_seeded', 1 );
+	}
+
+	add_action('init', 'editor_child_seed_about_page', 9);
+
+
+	/**
+	 * One-time creation of the two nav destinations that have no design
+	 * file yet: "Ranking & Projections" and "Player Evaluation". Both use
+	 * the default page.php template and are seeded with real, editable
+	 * post_content rather than a bespoke template — the copy is
+	 * placeholder, so Matt can rewrite it in the editor without a code
+	 * change, and no invented visual language gets baked into a template.
+	 *
+	 * Replace this content (or drop in a proper template) once designs
+	 * for these two screens exist.
+	 */
+	function editor_child_seed_placeholder_nav_pages()
+	{
+		if ( get_option( 'editor_child_placeholder_pages_seeded' ) )
+		{
+			return;
+		}
+
+		$pages = array(
+			'ranking-and-projections' => array(
+				'title'   => 'Ranking & Projections',
+				'content' => "<p>Dynasty rookie rankings and two-year statistical projections for every notable skill-position prospect, built on the same film-based process as the Rookie Scouting Portfolio.</p>\n\n<p>The Dynasty Rankings &amp; Projections package is available alongside the RSP Draft Package — see <a href=\"https://mattwaldman.com\">mattwaldman.com</a> for current pricing and release dates.</p>\n\n<p><em>This page is a placeholder — content and layout still to be designed.</em></p>",
+			),
+			'player-evaluation'       => array(
+				'title'   => 'Player Evaluation',
+				'content' => "<p>Every prospect and NFL player Matt studies is graded through one consistent, film-based framework — the same process behind the Rookie Scouting Portfolio since 2006.</p>\n\n<p>Browse the evaluations by position, by draft class, or head straight to the film.</p>\n\n<p><em>This page is a placeholder — content and layout still to be designed.</em></p>",
+			),
+		);
+
+		foreach ( $pages as $slug => $page )
+		{
+			if ( get_page_by_path( $slug ) )
+			{
+				continue;
+			}
+
+			wp_insert_post( array(
+				'post_title'   => $page['title'],
+				'post_name'    => $slug,
+				'post_content' => $page['content'],
+				'post_status'  => 'publish',
+				'post_type'    => 'page',
+			) );
+		}
+
+		update_option( 'editor_child_placeholder_pages_seeded', 1 );
+	}
+
+	add_action('init', 'editor_child_seed_placeholder_nav_pages', 9);
+
+
+	/**
+	 * Resolves the Buy the RSP page URL for the header's own CTA button,
+	 * which isn't part of wp_nav_menu() so it doesn't get touched by
+	 * editor_child_sync_primary_menu_urls(). Falls back to '#' if the
+	 * page hasn't been seeded/published yet.
+	 */
+	function editor_child_get_buy_rsp_url()
+	{
+		$page = get_page_by_path( 'buy-the-rsp' );
+
+		return $page ? get_permalink( $page ) : '#';
+	}
+
+
+	/**
+	 * Resolves the About page URL for the header's quickbar tagline link,
+	 * which (like the CTA above) isn't part of wp_nav_menu().
+	 */
+	function editor_child_get_about_url()
+	{
+		$page = get_page_by_path( 'about' );
+
+		return $page ? get_permalink( $page ) : '#';
+	}
+
+
+	/**
+	 * Resolves where the front page's "Explore the Film Room" / "View all"
+	 * links should point. The design sends both to the Resources page,
+	 * which isn't built yet — until it is, fall back to the Film Room
+	 * category archive so the links still go somewhere real.
+	 */
+	function editor_child_get_resources_url()
+	{
+		$page = get_page_by_path( 'resources' );
+
+		if ( $page )
+		{
+			return get_permalink( $page );
+		}
+
+		$film_room = get_category_by_slug( 'film-room' );
+
+		return $film_room ? get_category_link( $film_room ) : home_url( '/' );
+	}
+
+
+	/**
+	 * Dark page-frame override for the designs that use a dark page
+	 * column instead of the site's default near-white one: the front
+	 * page, Buy the RSP, and About. Scoped via body class rather than
+	 * changing the shared #page background.
+	 *
+	 * is_front_page() rather than is_page_template() for the front page —
+	 * front-page.php isn't a selectable page template.
+	 */
+	function editor_child_body_classes( $classes )
+	{
+		if ( is_front_page() || is_page_template( array( 'template-buy-the-rsp.php', 'template-about.php' ) ) )
+		{
+			$classes[] = 'rsp-page-dark-frame';
+		}
+
+		return $classes;
+	}
+
+	add_filter('body_class', 'editor_child_body_classes');
+
+
+	/**
 	 * One-time seed of the RSP Header 1C nav structure, so it doesn't have
 	 * to be built by hand in Appearance > Menus. Runs once (gated by the
 	 * editor_child_rsp_menu_seeded option), creates a "RSP Primary
@@ -261,10 +705,12 @@
 	 * Matches items by exact title, so anything Matt adds, renames, or
 	 * reorders by hand in Appearance > Menus is left alone — only the
 	 * titles in $url_map below ever get touched, and only once a real
-	 * destination is resolvable for them. Titles not yet resolvable
-	 * (RSP Draft Guide, Ranking & Projections, Player Evaluation's "by
-	 * Position"/"by Draft Class", About Us) stay '#' until their pages
-	 * exist — add them to $url_map here once they do.
+	 * destination is resolvable for them.
+	 *
+	 * Deliberately NOT in the map: "by Position" and "by Draft Class",
+	 * which are pure dropdown parents for their taxonomy-term children
+	 * (see editor_child_seed_nav_submenus()), and "Resources", which
+	 * stays put until the Resources page template is built.
 	 */
 	function editor_child_sync_primary_menu_urls()
 	{
@@ -275,14 +721,22 @@
 			return;
 		}
 
-		$film_room = get_category_by_slug( 'film-room' );
-		$articles  = get_category_by_slug( 'articles' );
-		$podcasts  = get_category_by_slug( 'podcasts' );
+		$film_room     = get_category_by_slug( 'film-room' );
+		$articles      = get_category_by_slug( 'articles' );
+		$podcasts      = get_category_by_slug( 'podcasts' );
+		$buy_rsp_page  = get_page_by_path( 'buy-the-rsp' );
+		$about_page    = get_page_by_path( 'about' );
+		$ranking_page  = get_page_by_path( 'ranking-and-projections' );
+		$player_page   = get_page_by_path( 'player-evaluation' );
 
 		$url_map = array_filter( array(
-			'Film Room' => $film_room ? get_category_link( $film_room ) : '',
-			'Articles'  => $articles ? get_category_link( $articles ) : '',
-			'Podcasts'  => $podcasts ? get_category_link( $podcasts ) : '',
+			'Film Room'             => $film_room ? get_category_link( $film_room ) : '',
+			'Articles'              => $articles ? get_category_link( $articles ) : '',
+			'Podcasts'              => $podcasts ? get_category_link( $podcasts ) : '',
+			'RSP Draft Guide'       => $buy_rsp_page ? get_permalink( $buy_rsp_page ) : '',
+			'About Us'              => $about_page ? get_permalink( $about_page ) : '',
+			'Ranking & Projections' => $ranking_page ? get_permalink( $ranking_page ) : '',
+			'Player Evaluation'     => $player_page ? get_permalink( $player_page ) : '',
 		) );
 
 		if ( empty( $url_map ) )
@@ -299,14 +753,20 @@
 
 		foreach ( $items as $item )
 		{
-			if ( ! isset( $url_map[ $item->title ] ) || $item->url === $url_map[ $item->title ] )
+			// Menu item titles come back HTML-encoded, so "Ranking &
+			// Projections" arrives as "Ranking &amp; Projections" and a
+			// raw-string comparison silently never matches. Decode before
+			// looking the title up.
+			$title = html_entity_decode( $item->title, ENT_QUOTES, 'UTF-8' );
+
+			if ( ! isset( $url_map[ $title ] ) || $item->url === $url_map[ $title ] )
 			{
 				continue;
 			}
 
 			wp_update_nav_menu_item( $menu->term_id, $item->ID, array(
 				'menu-item-title'     => $item->title,
-				'menu-item-url'       => $url_map[ $item->title ],
+				'menu-item-url'       => $url_map[ $title ],
 				'menu-item-parent-id' => $item->menu_item_parent,
 				'menu-item-status'    => 'publish',
 			) );
