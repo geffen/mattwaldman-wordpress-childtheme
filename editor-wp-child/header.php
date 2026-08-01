@@ -9,14 +9,22 @@
  * edit them in Appearance > Menus. Give "Player Evaluation" / "Resources"
  * child items in the menu builder to get their dropdowns.
  *
- * TODO: swap the '#' placeholder (Member Login) for a real page URL once
- * that page exists. The tagline and Buy the RSP CTA below already
- * resolve via editor_child_get_about_url() / editor_child_get_buy_rsp_url().
+ * All quickbar/CTA links resolve via the editor_child_get_*_url()
+ * helpers, so they follow the real pages as those come online. The
+ * social icons are still '#' pending Matt's real account URLs.
  */
 
-$is_member_login = is_page( 'member-login' );
-$buy_rsp_url      = editor_child_get_buy_rsp_url();
+$is_member_login  = is_page( 'member-login' );
 $about_url        = editor_child_get_about_url();
+$member_login_url = editor_child_get_member_login_url();
+
+/*
+ * The gold CTA is context-aware: members who already own everything get
+ * "My Account" instead of being sold what they've bought. See
+ * editor_child_buy_cta() in inc/members.php for the rule and for how to
+ * hide it outright rather than swap it.
+ */
+$buy_cta = editor_child_buy_cta();
 ?>
 <!doctype html>
 
@@ -39,7 +47,7 @@ $about_url        = editor_child_get_about_url();
 					<a href="<?php echo esc_url( $about_url ); ?>" class="rsp-quickbar__tagline">Pleasantly Shocking Readers since 2006</a>
 
 					<div class="rsp-quickbar__right">
-						<a href="#" class="rsp-quickbar__login<?php echo $is_member_login ? ' is-active' : ''; ?>">Member Login</a>
+						<a href="<?php echo esc_url( $member_login_url ); ?>" class="rsp-quickbar__login<?php echo $is_member_login ? ' is-active' : ''; ?>">Member Login</a>
 
 						<div class="rsp-quickbar__social">
 							<a href="#" aria-label="YouTube"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M23.5 6.2a3 3 0 0 0-2.1-2.1C19.5 3.6 12 3.6 12 3.6s-7.5 0-9.4.5A3 3 0 0 0 .5 6.2 31 31 0 0 0 0 12a31 31 0 0 0 .5 5.8 3 3 0 0 0 2.1 2.1c1.9.5 9.4.5 9.4.5s7.5 0 9.4-.5a3 3 0 0 0 2.1-2.1A31 31 0 0 0 24 12a31 31 0 0 0-.5-5.8zM9.6 15.6V8.4l6.2 3.6-6.2 3.6z"/></svg></a>
@@ -68,7 +76,9 @@ $about_url        = editor_child_get_about_url();
 					?>
 				</nav>
 
-				<a href="<?php echo esc_url( $buy_rsp_url ); ?>" class="rsp-cta" data-sheen>Buy the RSP</a>
+				<?php if ( $buy_cta['show'] ) : ?>
+					<a href="<?php echo esc_url( $buy_cta['url'] ); ?>" class="rsp-cta" data-sheen><?php echo esc_html( $buy_cta['label'] ); ?></a>
+				<?php endif; ?>
 
 				<button type="button" class="rsp-hamburger" aria-expanded="false" aria-controls="rsp-mobile-menu" aria-label="<?php esc_attr_e( 'Toggle menu', 'editor-child' ); ?>">
 					<span></span><span></span><span></span>
@@ -88,5 +98,7 @@ $about_url        = editor_child_get_about_url();
 					'fallback_cb'    => false,
 				) );
 			?>
-			<a href="<?php echo esc_url( $buy_rsp_url ); ?>" class="rsp-cta rsp-cta--mobile" data-sheen>Buy the RSP</a>
+			<?php if ( $buy_cta['show'] ) : ?>
+				<a href="<?php echo esc_url( $buy_cta['url'] ); ?>" class="rsp-cta rsp-cta--mobile" data-sheen><?php echo esc_html( $buy_cta['label'] ); ?></a>
+			<?php endif; ?>
 		</div>

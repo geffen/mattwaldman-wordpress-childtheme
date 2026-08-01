@@ -1,5 +1,15 @@
 <?php
 
+	/**
+	 * Members-only access layer (RSP Draft Guide, Ranking & Projections).
+	 * Kept in its own file rather than inline here — this file is already
+	 * long, and the access check is the one piece of the theme that gets
+	 * swapped out when aMember can finally be integrated properly. Read
+	 * that file's header before changing how access is decided.
+	 */
+	require_once get_stylesheet_directory() . '/inc/members.php';
+
+
 	function editor_child_scripts()
 	{
 		wp_enqueue_style('editor-parent-style', get_template_directory_uri(). '/style.css');
@@ -264,6 +274,190 @@
 	}
 
 	add_action('init', 'editor_child_seed_draft_class_terms', 8);
+
+
+	/**
+	 * TEST-SITE-ONLY content importer. Pulls recent posts from the live
+	 * RSP site's public REST API and recreates them locally so the
+	 * Podcasts / Film Room pages and the Resources page render against
+	 * realistic content instead of empty categories — which is what
+	 * production will do on its own, since those categories are already
+	 * populated there.
+	 *
+	 * Three guards, because this writes posts:
+	 *  - hard-gated to the notmattwaldman.com test host, so it can never
+	 *    run on production (where it would duplicate the site's own posts
+	 *    back into itself);
+	 *  - one-time, via the editor_child_content_imported_v2 option;
+	 *  - runs on admin requests only, so the remote HTTP calls and image
+	 *    downloads can never block a front-end page load.
+	 *
+	 * Featured images are sideloaded into the media library. The same
+	 * artwork is reused across many RSP posts, so downloaded URLs are
+	 * cached per run and the attachment is shared rather than fetched
+	 * dozens of times.
+	 *
+	 * Imported posts are marked with a _rsp_imported_from meta value so
+	 * they can be found and bulk-deleted later. DELETE this function
+	 * before production.
+	 */
+	function editor_child_import_demo_content()
+	{
+		if ( ! is_admin() || wp_doing_ajax() )
+		{
+			return;
+		}
+
+		if ( get_option( 'editor_child_content_imported_v2' ) )
+		{
+			return;
+		}
+
+		if ( false === strpos( home_url(), 'notmattwaldman.com' ) )
+		{
+			return;
+		}
+
+		// media_sideload_image() and its dependencies aren't loaded on
+		// every admin request.
+		require_once ABSPATH . 'wp-admin/includes/file.php';
+		require_once ABSPATH . 'wp-admin/includes/media.php';
+		require_once ABSPATH . 'wp-admin/includes/image.php';
+
+		// Remote image URL => local attachment ID, so shared artwork is
+		// only downloaded once per run.
+		$image_cache = array();
+
+		$attach_image = function ( $image_url, $post_id ) use ( &$image_cache ) {
+			if ( ! $image_url || has_post_thumbnail( $post_id ) )
+			{
+				return;
+			}
+
+			if ( isset( $image_cache[ $image_url ] ) )
+			{
+				set_post_thumbnail( $post_id, $image_cache[ $image_url ] );
+				return;
+			}
+
+			$attachment_id = media_sideload_image( $image_url, $post_id, null, 'id' );
+
+			if ( is_wp_error( $attachment_id ) )
+			{
+				return;
+			}
+
+			$image_cache[ $image_url ] = $attachment_id;
+			set_post_thumbnail( $post_id, $attachment_id );
+		};
+
+		// Remote category ID => local category slug.
+		$map = array(
+			2060    => 'podcasts',
+			1466246 => 'film-room',
+		);
+
+		foreach ( $map as $remote_cat => $local_slug )
+		{
+			$local = get_category_by_slug( $local_slug );
+
+			if ( ! $local )
+			{
+				continue;
+			}
+
+			// _embed rather than _fields: it returns the featured image
+			// URL in the same request, avoiding one extra HTTP call per
+			// post (which would risk a timeout across 40 posts).
+			$response = wp_remote_get(
+				add_query_arg(
+					array(
+						'categories' => $remote_cat,
+						'per_page'   => 20,
+						'orderby'    => 'date',
+						'order'      => 'desc',
+						'_embed'     => 'wp:featuredmedia',
+					),
+					'https://mattwaldmanrsp.com/wp-json/wp/v2/posts'
+				),
+				array( 'timeout' => 30 )
+			);
+
+			if ( is_wp_error( $response ) || 200 !== wp_remote_retrieve_response_code( $response ) )
+			{
+				continue;
+			}
+
+			$posts = json_decode( wp_remote_retrieve_body( $response ), true );
+
+			if ( ! is_array( $posts ) )
+			{
+				continue;
+			}
+
+			foreach ( $posts as $remote_post )
+			{
+				$title = isset( $remote_post['title']['rendered'] ) ? $remote_post['title']['rendered'] : '';
+
+				if ( ! $title )
+				{
+					continue;
+				}
+
+				$source_link = isset( $remote_post['link'] ) ? esc_url_raw( $remote_post['link'] ) : '';
+				$image_url   = isset( $remote_post['_embedded']['wp:featuredmedia'][0]['source_url'] )
+					? esc_url_raw( $remote_post['_embedded']['wp:featuredmedia'][0]['source_url'] )
+					: '';
+
+				// Dedupe on the source URL rather than the title:
+				// get_page_by_title() is deprecated (and this install is on
+				// WP 7.x), and the source URL is a stabler key anyway.
+				// An earlier run imported these without images, so an
+				// existing post still gets its thumbnail backfilled here
+				// rather than being skipped outright.
+				if ( $source_link )
+				{
+					$already = get_posts( array(
+						'post_type'           => 'post',
+						'post_status'         => 'any',
+						'posts_per_page'      => 1,
+						'fields'              => 'ids',
+						'ignore_sticky_posts' => true,
+						'no_found_rows'       => true,
+						'meta_key'            => '_rsp_imported_from',
+						'meta_value'          => $source_link,
+					) );
+
+					if ( ! empty( $already ) )
+					{
+						wp_set_post_categories( $already[0], array( (int) $local->term_id ), true );
+						$attach_image( $image_url, $already[0] );
+						continue;
+					}
+				}
+
+				$new_id = wp_insert_post( array(
+					'post_title'    => wp_strip_all_tags( $title ),
+					'post_content'  => isset( $remote_post['content']['rendered'] ) ? $remote_post['content']['rendered'] : '',
+					'post_excerpt'  => isset( $remote_post['excerpt']['rendered'] ) ? wp_strip_all_tags( $remote_post['excerpt']['rendered'] ) : '',
+					'post_date'     => isset( $remote_post['date'] ) ? $remote_post['date'] : current_time( 'mysql' ),
+					'post_status'   => 'publish',
+					'post_type'     => 'post',
+					'post_category' => array( (int) $local->term_id ),
+				) );
+
+				if ( $new_id && ! is_wp_error( $new_id ) )
+				{
+					update_post_meta( $new_id, '_rsp_imported_from', $source_link );
+					$attach_image( $image_url, $new_id );
+				}
+			}
+		}
+
+		update_option( 'editor_child_content_imported_v2', 1 );
+	}
+
+	add_action('admin_init', 'editor_child_import_demo_content');
 
 
 	/**
@@ -533,16 +727,184 @@
 
 
 	/**
+	 * One-time setup of the two members-only areas defined in
+	 * inc/members.php: their gated post categories, the /rsp-draft-guide/
+	 * page, and the Member Area template assignment on both pages.
+	 *
+	 * Option-gated (like every other seeder here) so it can never
+	 * re-fight a manual change in wp-admin — assigning _wp_page_template
+	 * on every init would silently revert a template switch made in the
+	 * page editor, which is exactly the trap
+	 * editor_child_sync_primary_menu_urls() fell into.
+	 *
+	 * /ranking-and-projections/ already exists from the placeholder
+	 * seeder above; its copy is only rewritten if it still holds that
+	 * seeded placeholder text, so Matt's own edits survive.
+	 *
+	 * Bump the option name to re-run after changing this function.
+	 */
+	function editor_child_seed_member_areas()
+	{
+		if ( get_option( 'editor_child_member_areas_seeded_v1' ) )
+		{
+			return;
+		}
+
+		$pitch = array(
+			'draft-guide' => "<p>The Rookie Scouting Portfolio is a film-based evaluation of every notable rookie skill-position prospect &mdash; quarterbacks, running backs, wide receivers, and tight ends &mdash; graded through the same checklist Matt has used since 2006.</p>\n\n<p>Members get the full publication the day it drops on April 1, plus the post-draft update in May, and every in-season addition to this area.</p>",
+			'rankings'    => "<p>Dynasty rookie rankings and two-year statistical projections for every notable skill-position prospect, built on the same film-based process as the Rookie Scouting Portfolio.</p>\n\n<p>Members get each ranking refresh through the post-draft cycle, with the reasoning behind every move.</p>",
+		);
+
+		foreach ( editor_child_member_areas() as $key => $area )
+		{
+			/* The category that holds this area's gated posts. */
+			if ( ! term_exists( $area['category'], 'category' ) )
+			{
+				wp_insert_term(
+					$area['label'],
+					'category',
+					array( 'slug' => $area['category'] )
+				);
+			}
+
+			$page    = get_page_by_path( $area['page_slug'] );
+			$content = isset( $pitch[ $key ] ) ? $pitch[ $key ] : '';
+
+			if ( ! $page )
+			{
+				$page_id = wp_insert_post( array(
+					'post_title'   => $area['label'],
+					'post_name'    => $area['page_slug'],
+					'post_content' => $content,
+					'post_status'  => 'publish',
+					'post_type'    => 'page',
+				) );
+
+				if ( is_wp_error( $page_id ) || ! $page_id )
+				{
+					continue;
+				}
+			}
+			else
+			{
+				$page_id = $page->ID;
+
+				/*
+				 * Only overwrite copy that's still the untouched
+				 * placeholder from editor_child_seed_placeholder_nav_pages().
+				 */
+				if ( $content && false !== strpos( $page->post_content, 'This page is a placeholder' ) )
+				{
+					wp_update_post( array(
+						'ID'           => $page_id,
+						'post_content' => $content,
+					) );
+				}
+			}
+
+			update_post_meta( $page_id, '_wp_page_template', 'template-member-area.php' );
+		}
+
+		update_option( 'editor_child_member_areas_seeded_v1', 1 );
+	}
+
+	add_action('init', 'editor_child_seed_member_areas', 10);
+
+
+	/**
+	 * One-time creation of the two taxonomy landing pages that hang off
+	 * Player Evaluation: /player-evaluation/by-position/ and
+	 * /player-evaluation/by-draft-class/.
+	 *
+	 * They exist because WordPress builds no root archive for a custom
+	 * taxonomy — /position/ and /draft-class/ both 404 — so those nav
+	 * items had nowhere to point. Both use template-term-index.php,
+	 * which lists the taxonomy's terms and links through to the per-term
+	 * archives that archive.php already renders.
+	 *
+	 * Created as children of /player-evaluation/ (post_parent), so the
+	 * URLs nest and breadcrumbs read correctly. Skipped entirely if that
+	 * parent page is missing rather than creating them at the root.
+	 *
+	 * Option-gated like the other seeders — it must never re-fight a
+	 * manual edit in wp-admin. Bump the option name to re-run.
+	 */
+	function editor_child_seed_taxonomy_landing_pages()
+	{
+		if ( get_option( 'editor_child_taxonomy_pages_seeded_v1' ) )
+		{
+			return;
+		}
+
+		$parent = get_page_by_path( 'player-evaluation' );
+
+		if ( ! $parent )
+		{
+			return;
+		}
+
+		$pages = array(
+			'by-position'    => array(
+				'title'   => 'by Position',
+				'content' => "<p>Quarterbacks, running backs, wide receivers, and tight ends are each graded against a position-specific checklist — the same one behind every edition of the Rookie Scouting Portfolio since 2006.</p>\n\n<p>Pick a position to see every evaluation filed under it.</p>",
+			),
+			'by-draft-class' => array(
+				'title'   => 'by Draft Class',
+				'content' => "<p>Every prospect Matt studies is filed by the year he entered the league, so a full class can be read the way it was scouted — and re-read years later against what actually happened.</p>\n\n<p>Pick a class to see its evaluations.</p>",
+			),
+		);
+
+		foreach ( $pages as $slug => $page )
+		{
+			$existing = get_page_by_path( 'player-evaluation/' . $slug );
+
+			if ( $existing )
+			{
+				$page_id = $existing->ID;
+			}
+			else
+			{
+				$page_id = wp_insert_post( array(
+					'post_title'   => $page['title'],
+					'post_name'    => $slug,
+					'post_content' => $page['content'],
+					'post_status'  => 'publish',
+					'post_type'    => 'page',
+					'post_parent'  => $parent->ID,
+				) );
+
+				if ( is_wp_error( $page_id ) || ! $page_id )
+				{
+					continue;
+				}
+			}
+
+			update_post_meta( $page_id, '_wp_page_template', 'template-term-index.php' );
+		}
+
+		update_option( 'editor_child_taxonomy_pages_seeded_v1', 1 );
+	}
+
+	add_action('init', 'editor_child_seed_taxonomy_landing_pages', 11);
+
+
+	/**
 	 * Resolves the Buy the RSP page URL for the header's own CTA button,
 	 * which isn't part of wp_nav_menu() so it doesn't get touched by
-	 * editor_child_sync_primary_menu_urls(). Falls back to '#' if the
-	 * page hasn't been seeded/published yet.
+	 * editor_child_sync_primary_menu_urls().
+	 *
+	 * Falls back to aMember's signup page rather than '#'. This used to
+	 * return '#', and when the local /buy-the-rsp/ page was renamed in
+	 * wp-admin the site's most important CTA silently became a dead link
+	 * in the header of EVERY page — with nothing in the markup to show
+	 * anything was wrong. A CTA that reaches the real store is always
+	 * better than one that goes nowhere.
 	 */
 	function editor_child_get_buy_rsp_url()
 	{
 		$page = get_page_by_path( 'buy-the-rsp' );
 
-		return $page ? get_permalink( $page ) : '#';
+		return $page ? get_permalink( $page ) : editor_child_amember_signup_url();
 	}
 
 
@@ -555,6 +917,20 @@
 		$page = get_page_by_path( 'about' );
 
 		return $page ? get_permalink( $page ) : '#';
+	}
+
+
+	/**
+	 * Resolves the Member Login page URL for the quickbar link, which
+	 * (like the CTA and tagline) isn't part of wp_nav_menu(). Falls back
+	 * to WordPress's own login screen if no page has been created yet, so
+	 * the link is never a dead '#'.
+	 */
+	function editor_child_get_member_login_url()
+	{
+		$page = get_page_by_path( 'member-login' );
+
+		return $page ? get_permalink( $page ) : wp_login_url();
 	}
 
 
@@ -590,7 +966,14 @@
 	 */
 	function editor_child_body_classes( $classes )
 	{
-		if ( is_front_page() || is_page_template( array( 'template-buy-the-rsp.php', 'template-about.php' ) ) )
+		$dark_templates = array(
+			'template-buy-the-rsp.php',
+			'template-about.php',
+			'template-member-login.php',
+			'template-member-area.php',
+		);
+
+		if ( is_front_page() || is_page_template( $dark_templates ) )
 		{
 			$classes[] = 'rsp-page-dark-frame';
 		}
@@ -773,7 +1156,19 @@
 		}
 	}
 
-	add_action('init', 'editor_child_sync_primary_menu_urls', 20);
+	/*
+	 * DISABLED — the menu is now managed by hand in Appearance > Menus.
+	 *
+	 * This hook ran on every request and rewrote menu item URLs by
+	 * matching their titles, which would silently revert any edit made in
+	 * wp-admin to an item named Film Room / Articles / Podcasts / RSP
+	 * Draft Guide / About Us / Ranking & Projections / Player Evaluation.
+	 * The CMS is the source of truth for the menu now, so this stays off.
+	 *
+	 * The function itself is kept for reference only. Don't re-enable it
+	 * without first confirming nobody is maintaining the menu by hand.
+	 */
+	// add_action('init', 'editor_child_sync_primary_menu_urls', 20);
 
 
 	/**
